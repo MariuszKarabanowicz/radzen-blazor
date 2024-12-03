@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection.Emit;
 using System.Threading.Tasks;
 
 namespace Radzen.Blazor
@@ -232,16 +233,17 @@ namespace Radzen.Blazor
         [Parameter]
         public EventCallback<IEnumerable<object>> CheckedValuesChanged { get; set; }
 
-        void RenderTreeItem(RenderTreeBuilder builder, object data, RenderFragment<RadzenTreeItem> template, Func<object, string> text,
+        void RenderTreeItem(RenderTreeBuilder builder, object data, RenderFragment<RadzenTreeItem> template, Func<object, string> text, Func<object, bool> checkable,
             Func<object, bool> hasChildren, Func<object, bool> expanded, Func<object, bool> selected, IEnumerable children = null)
         {
             builder.OpenComponent<RadzenTreeItem>(0);
             builder.AddAttribute(1, nameof(RadzenTreeItem.Text), text(data));
-            builder.AddAttribute(2, nameof(RadzenTreeItem.Value), data);
-            builder.AddAttribute(3, nameof(RadzenTreeItem.HasChildren), hasChildren(data));
-            builder.AddAttribute(4, nameof(RadzenTreeItem.Template), template);
-            builder.AddAttribute(5, nameof(RadzenTreeItem.Expanded), expanded(data));
-            builder.AddAttribute(6, nameof(RadzenTreeItem.Selected), Value == data || selected(data));
+            builder.AddAttribute(2, nameof(RadzenTreeItem.Checkable), checkable(data));
+            builder.AddAttribute(3, nameof(RadzenTreeItem.Value), data);
+            builder.AddAttribute(4, nameof(RadzenTreeItem.HasChildren), hasChildren(data));
+            builder.AddAttribute(5, nameof(RadzenTreeItem.Template), template);
+            builder.AddAttribute(6, nameof(RadzenTreeItem.Expanded), expanded(data));
+            builder.AddAttribute(7, nameof(RadzenTreeItem.Selected), Value == data || selected(data));
             builder.SetKey(data);
         }
 
@@ -252,6 +254,7 @@ namespace Radzen.Blazor
             return new RenderFragment(builder =>
             {
                 Func<object, string> text = null;
+                Func<object, bool> checkable = null;
 
                 foreach (var data in children)
                 {
@@ -262,7 +265,14 @@ namespace Radzen.Blazor
                             (o => "");
                     }
 
-                    RenderTreeItem(builder, data, level.Template, text, level.HasChildren, level.Expanded, level.Selected);
+                    if (checkable == null)
+                    {
+                        checkable = level.Checkable ??
+                            (!string.IsNullOrEmpty(level.CheckableProperty) ? Getter<bool>(data, level.CheckableProperty) : null) ??
+                            (o => true);
+                    }
+
+                    RenderTreeItem(builder, data, level.Template, text, checkable, level.HasChildren, level.Expanded, level.Selected);
 
                     var hasChildren = level.HasChildren(data);
 
@@ -316,6 +326,35 @@ namespace Radzen.Blazor
             SelectedItem?.Unselect();
             SelectedItem = null;
         }
+
+        /// <summary>
+        /// Forces the specified <paramref name="item"/> or, if
+        /// <paramref name="item"/> is <c>null</c>, all items in the tree to be
+        /// re-evaluated such that items lazily created via <see cref="Expand"/>
+        /// are realised if the underlying data model has been changed from
+        /// somewhere else.
+        /// </summary>
+        /// <param name="item">The item to be reloaded or <c>null</c> to refresh
+        /// the root nodes of the tree.</param>
+        /// <returns>A task to wait for the operation to complete.</returns>
+        public async Task Reload(RadzenTreeItem item = null) {
+            // Implementation node: I am absolute not sure whether "ExpandItem"
+            // is the "right" way to to this, but it does exactly what I need.
+            // The rationale behind the public "Reload" method is that (i) just
+            // making "ExpandItem" public would create an API that is not
+            // intuitively named and (ii) if "ExpandItem" gets changed in the
+            // future such that it cannot be used for this hack anymore, the
+            // implementation could be swapped with a different one without
+            // breaking the public API.
+            if (item == null) {
+                foreach (var i in this.items) {
+                    await this.ExpandItem(i);
+                }
+            } else {
+                await this.ExpandItem(item);
+            }
+        }
+
         internal async Task ExpandItem(RadzenTreeItem item)
         {
             var args = new TreeExpandEventArgs()
@@ -332,6 +371,7 @@ namespace Radzen.Blazor
                 var childContent = new RenderFragment(builder =>
                 {
                     Func<object, string> text = null;
+                    Func<object, bool> checkable = null;
                     var children = args.Children;
 
                     foreach (var data in children.Data)
@@ -341,7 +381,14 @@ namespace Radzen.Blazor
                             text = children.Text ?? Getter<string>(data, children.TextProperty);
                         }
 
-                        RenderTreeItem(builder, data, children.Template, text, children.HasChildren, children.Expanded, children.Selected);
+                        if (checkable == null)
+                        {
+                            checkable = children.Checkable ??
+                                (!string.IsNullOrEmpty(children.CheckableProperty) ? Getter<bool>(data, children.CheckableProperty) : null) ??
+                                    (o => true);
+                        }
+
+                        RenderTreeItem(builder, data, children.Template, text, checkable, children.HasChildren, children.Expanded, children.Selected);
                         builder.CloseComponent();
                     }
                 });

@@ -160,7 +160,7 @@ namespace Radzen.Blazor
 
         string getIconStyle()
         { 
-            return $"{(Parent?.DisplayStyle == MenuItemDisplayStyle.Icon ? "margin-right:0px;" : "")}{(!string.IsNullOrEmpty(IconColor) ? $"color:{IconColor}" : "")}";
+            return $"{(Parent?.DisplayStyle == MenuItemDisplayStyle.Icon ? "margin-inline-end:0px;" : "")}{(!string.IsNullOrEmpty(IconColor) ? $"color:{IconColor}" : "")}";
         }
 
         string getItemStyle()
