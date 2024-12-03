@@ -784,7 +784,7 @@ window.Radzen = {
       files.push({Name: file.name, Size: file.size});
     }
     var xhr = new XMLHttpRequest();
-    xhr.withCredentials = true;
+    xhr.withCredentials = false;
     xhr.upload.onprogress = function (e) {
       if (e.lengthComputable) {
         var uploadComponent =
@@ -829,11 +829,12 @@ window.Radzen = {
       }
     };
     uploadComponent.invokeMethodAsync('GetHeaders').then(function (headers) {
-      xhr.open('POST', url, true);
-      for (var name in headers) {
-        xhr.setRequestHeader(name, headers[name]);
-      }
-      xhr.send(data);
+        xhr.open('PUT', url, true);
+        for (var name in headers) {
+              xhr.setRequestHeader(name, headers[name]);
+        }
+        xhr.setRequestHeader("Content-Range", "bytes 0-" + (file.size - 1) + "/" + file.size);
+        xhr.send(file);
     });
   },
   getCookie: function (name) {
